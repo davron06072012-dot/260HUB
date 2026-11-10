@@ -6,6 +6,37 @@ const db = require('../database')
 
 const router = express.Router()
 
+// ======================================
+// USER ROLES
+// ======================================
+
+function getRootEmails() {
+  return (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function getUserRole(user) {
+  const email = String(user.email || '').toLowerCase()
+
+  // Главные администраторы из .env
+  if (getRootEmails().includes(email)) {
+    return 'root'
+  }
+
+  // Администраторы из базы данных
+  if (user.role === 'admin') {
+    return 'admin'
+  }
+
+  return 'player'
+}
+
+// ======================================
+// JWT TOKEN
+// ======================================
+
 function createToken(user) {
   return jwt.sign(
     {
@@ -16,6 +47,10 @@ function createToken(user) {
     { expiresIn: '7d' }
   )
 }
+
+// ======================================
+// AUTHENTICATION
+// ======================================
 
 function authenticateToken(req, res, next) {
   const header = req.headers.authorization
@@ -28,13 +63,43 @@ function authenticateToken(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(
+    const decoded = jwt.verify(
       header.slice(7),
       process.env.JWT_SECRET
     )
 
+    const user = db.prepare(`
+      SELECT id, username, email, role, is_banned, ban_reason
+      FROM users
+      WHERE id = ?
+    `).get(decoded.id)
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Пользователь не найден.'
+      })
+    }
+
+    if (user.is_banned) {
+      return res.status(403).json({
+        success: false,
+        message: 'Ваш аккаунт заблокирован.',
+        reason: user.ban_reason || null
+      })
+    }
+
+    req.user = {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: getUserRole(user)
+    }
+
     next()
   } catch (error) {
+    console.error('AUTH ERROR:', error)
+
     return res.status(401).json({
       success: false,
       message: 'Сессия недействительна или истекла.'
@@ -42,7 +107,10 @@ function authenticateToken(req, res, next) {
   }
 }
 
+// ======================================
 // REGISTER
+// ======================================
+
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password } = req.body || {}
@@ -100,17 +168,16 @@ router.post('/register', async (req, res) => {
     const result = db.prepare(`
       INSERT INTO users (username, email, password)
       VALUES (?, ?, ?)
-    `).run(
-      cleanUsername,
-      cleanEmail,
-      hashedPassword
-    )
+    `).run(cleanUsername, cleanEmail, hashedPassword)
 
     const user = {
       id: Number(result.lastInsertRowid),
       username: cleanUsername,
-      email: cleanEmail
+      email: cleanEmail,
+      role: 'player'
     }
+
+    user.role = getUserRole(user)
 
     return res.status(201).json({
       success: true,
@@ -118,6 +185,7 @@ router.post('/register', async (req, res) => {
       token: createToken(user),
       user
     })
+
   } catch (error) {
     console.error('REGISTER ERROR:', error)
 
@@ -135,7 +203,10 @@ router.post('/register', async (req, res) => {
   }
 })
 
+// ======================================
 // LOGIN
+// ======================================
+
 router.post('/login', async (req, res) => {
   try {
     const { login, password } = req.body || {}
@@ -155,7 +226,14 @@ router.post('/login', async (req, res) => {
     const cleanLogin = login.trim()
 
     const user = db.prepare(`
-      SELECT id, username, email, password
+      SELECT
+        id,
+        username,
+        email,
+        password,
+        role,
+        is_banned,
+        ban_reason
       FROM users
       WHERE username = ? OR email = ?
     `).get(
@@ -182,18 +260,28 @@ router.post('/login', async (req, res) => {
       })
     }
 
+    if (user.is_banned) {
+      return res.status(403).json({
+        success: false,
+        message: 'Ваш аккаунт заблокирован.',
+        reason: user.ban_reason || null
+      })
+    }
+
     const publicUser = {
       id: user.id,
       username: user.username,
-      email: user.email
+      email: user.email,
+      role: getUserRole(user)
     }
 
     return res.json({
       success: true,
       message: 'Вход выполнен!',
-      token: createToken(publicUser),
+      token: createToken(user),
       user: publicUser
     })
+
   } catch (error) {
     console.error('LOGIN ERROR:', error)
 
@@ -204,7 +292,10 @@ router.post('/login', async (req, res) => {
   }
 })
 
+// ======================================
 // CURRENT USER
+// ======================================
+
 router.get('/me', authenticateToken, (req, res) => {
   try {
     const user = db.prepare(`
@@ -214,7 +305,9 @@ router.get('/me', authenticateToken, (req, res) => {
         email,
         favorite_game,
         bio,
-        created_at
+        created_at,
+        role,
+        is_banned
       FROM users
       WHERE id = ?
     `).get(req.user.id)
@@ -228,8 +321,12 @@ router.get('/me', authenticateToken, (req, res) => {
 
     return res.json({
       success: true,
-      user
+      user: {
+        ...user,
+        role: getUserRole(user)
+      }
     })
+
   } catch (error) {
     console.error('ME ERROR:', error)
 
@@ -240,7 +337,10 @@ router.get('/me', authenticateToken, (req, res) => {
   }
 })
 
+// ======================================
 // LOGOUT
+// ======================================
+
 router.post('/logout', (req, res) => {
   return res.json({
     success: true,

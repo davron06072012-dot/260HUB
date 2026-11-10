@@ -29,10 +29,12 @@ const db = require('./database')
 // ROUTES
 // ==========================================
 
-const authRoutes = require('./routes/auth')
+const authRoutes = require('./src/auth')
 const playersRoutes = require('./routes/players')
 const messagesRoutes = require('./routes/messages')
 const friendsRoutes = require('./routes/friends')
+const adminRoutes = require('./routes/admin')
+const tournamentRoutes = require('./routes/tournaments')
 
 // ==========================================
 // EXPRESS
@@ -47,37 +49,30 @@ app.disable('x-powered-by')
 // ==========================================
 
 const allowedOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
+  /^http:\/\/localhost:\d+$/,
+  /^http:\/\/127\.0\.0\.1:\d+$/,
   process.env.CLIENT_ORIGIN
 ].filter(Boolean)
 
 app.use(cors({
   origin(origin, callback) {
-    // Разрешаем запросы без Origin, например из Postman.
-    if (!origin || allowedOrigins.includes(origin)) {
+    const isAllowed = !origin || allowedOrigins.some((allowed) =>
+      allowed instanceof RegExp
+        ? allowed.test(origin)
+        : allowed === origin
+    )
+
+    if (isAllowed) {
       return callback(null, true)
     }
 
     return callback(new Error('CORS: Origin не разрешён.'))
   },
-
-  methods: [
-    'GET',
-    'POST',
-    'PATCH',
-    'PUT',
-    'DELETE',
-    'OPTIONS'
-  ],
-
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization'
-  ],
-
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false
 }))
+
 
 // ==========================================
 // BODY PARSER
@@ -142,6 +137,12 @@ app.use('/api/messages', messagesRoutes)
 
 app.use('/api/friends', friendsRoutes)
 
+// ADMIN PANEL API
+app.use('/api/admin', adminRoutes)
+
+// TOURNAMENTS API
+app.use('/api/tournaments', tournamentRoutes)
+
 // ==========================================
 // 404
 // ==========================================
@@ -200,6 +201,8 @@ const server = app.listen(PORT, () => {
   console.log('================================')
   console.log(`API:      http://localhost:${PORT}/api`)
   console.log(`Health:   http://localhost:${PORT}/api/health`)
+  console.log(`Admin:    http://localhost:${PORT}/api/admin`)
+  console.log(`Tournaments: http://localhost:${PORT}/api/tournaments`)
   console.log('Database: CONNECTED')
   console.log('Status:   ONLINE')
   console.log('================================')
