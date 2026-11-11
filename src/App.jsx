@@ -7,7 +7,7 @@ import {
   Globe, AlertCircle
 } from 'lucide-react'
 
-const API = 'http://localhost:3000/api'
+const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/$/, '')
 const TOKEN_KEY = '260hub_token'
 const GAMES = ['Standoff 2', 'Counter-Strike 2', 'Brawl Stars', 'Valorant', 'Minecraft', 'Fortnite', 'PUBG', 'Dota 2', 'Roblox']
 const FORMATS = ['1v1', '2v2', '5v5']
