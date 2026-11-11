@@ -51,6 +51,7 @@ app.disable('x-powered-by')
 const allowedOrigins = [
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
+  'https://260hub-shadow-n3t.vercel.app',
   process.env.CLIENT_ORIGIN
 ].filter(Boolean)
 
