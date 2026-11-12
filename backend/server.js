@@ -51,13 +51,16 @@ app.disable('x-powered-by')
 const allowedOrigins = [
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
-  'https://260hub-shadow-n3t.vercel.app',
-  process.env.CLIENT_ORIGIN
-].filter(Boolean)
+  /^https:\/\/260hub(?:-[a-z0-9-]+)?\.vercel\.app$/,
+  ...(process.env.CLIENT_ORIGIN || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean)
+]
 
 app.use(cors({
   origin(origin, callback) {
-    const isAllowed = !origin || allowedOrigins.some((allowed) =>
+    const isAllowed = !origin || allowedOrigins.some(allowed =>
       allowed instanceof RegExp
         ? allowed.test(origin)
         : allowed === origin
@@ -67,13 +70,14 @@ app.use(cors({
       return callback(null, true)
     }
 
+    console.warn('CORS blocked origin:', origin)
     return callback(new Error('CORS: Origin не разрешён.'))
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false
+  credentials: false,
+  optionsSuccessStatus: 204
 }))
-
 
 // ==========================================
 // BODY PARSER
