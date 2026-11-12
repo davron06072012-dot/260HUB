@@ -60,7 +60,6 @@ db.exec(`
   )
 `)
 
-// Add missing user fields before using them.
 const migrateUsers = db.transaction(() => {
   addColumnIfMissing('users', 'favorite_game', "TEXT DEFAULT ''")
   addColumnIfMissing('users', 'bio', "TEXT DEFAULT ''")
@@ -68,12 +67,7 @@ const migrateUsers = db.transaction(() => {
   addColumnIfMissing('users', 'is_banned', 'INTEGER NOT NULL DEFAULT 0')
   addColumnIfMissing('users', 'ban_reason', 'TEXT')
   addColumnIfMissing('users', 'banned_at', 'DATETIME')
-
-  addColumnIfMissing(
-  'users',
-  'role',
-  "TEXT NOT NULL DEFAULT 'player'"
-)
+  addColumnIfMissing('users', 'role', "TEXT NOT NULL DEFAULT 'player'")
 
   db.prepare(`
     UPDATE users
@@ -83,6 +77,38 @@ const migrateUsers = db.transaction(() => {
 })
 
 migrateUsers()
+
+// ==========================================
+// PASSWORD RESET TOKENS
+// ==========================================
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    user_id INTEGER NOT NULL,
+
+    token_hash TEXT NOT NULL UNIQUE,
+
+    expires_at DATETIME NOT NULL,
+
+    used_at DATETIME DEFAULT NULL,
+
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id)
+      REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_password_reset_user
+    ON password_reset_tokens(user_id);
+
+  CREATE INDEX IF NOT EXISTS idx_password_reset_expiry
+    ON password_reset_tokens(expires_at);
+
+  CREATE INDEX IF NOT EXISTS idx_password_reset_token_hash
+    ON password_reset_tokens(token_hash);
+`)
 
 // ==========================================
 // TOURNAMENTS
@@ -169,6 +195,7 @@ const migrateParticipants = db.transaction(() => {
     'status',
     "TEXT NOT NULL DEFAULT 'registered'"
   )
+
   addColumnIfMissing(
     'tournament_participants',
     'registered_at',
@@ -249,8 +276,6 @@ db.exec(`
       REFERENCES users(id) ON DELETE SET NULL
   )
 `)
-
-
 
 // ==========================================
 // MESSAGE REPORTS
@@ -343,9 +368,10 @@ console.log('Participants: READY')
 console.log('Admin Logs: READY')
 console.log('Site Content: READY')
 console.log('Change Proposals: READY')
-console.log('================================')
-console.log('User Roles: READY')
 console.log('Message Reports: READY')
+console.log('Password Reset Tokens: READY')
+console.log('User Roles: READY')
+console.log('================================')
 console.log('')
 
 module.exports = db
